@@ -1,6 +1,13 @@
 const bcrypt = require('bcryptjs');
 const repo = require('../repositories/yemekhaneRepo');
 const { oturumOlustur, oturumSil } = require('../utils/oturum');
+const { redisGetir } = require('../redisClient');
+
+const MENU_ONBELLEK_SN = 600; // 10 dakika
+
+function menuOnbellekAnahtari(yemekhaneId, tarih, ogunId) {
+  return `menu:gunun:${yemekhaneId}:${tarih}:${ogunId}`;
+}
 
 function hataYaniti(res, err) {
   if (err && err.sqlState === '45000') {
@@ -80,35 +87,53 @@ async function gununMenusu(req, res) {
     const ogunId = Number(req.query.ogun_id || 2);
     const tarih = req.query.tarih || new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
 
-    const satirlar = await repo.gununMenusuGetir(yemekhaneId, tarih, ogunId);
-    if (satirlar.length === 0) {
-      return res.json({ menu: null, yemekler: [], toplam_kalori: 0 });
-    }
-    const ilk = satirlar[0];
-    const yemekler = satirlar.map((s) => ({
-      yemek_id: s.yemek_id,
-      ad: s.yemek,
-      kategori: s.kategori,
-      kalori: s.kalori,
-      vejetaryen: Boolean(s.vejetaryen),
-      alerjenler: s.alerjenler ? s.alerjenler.split(', ') : [],
-      alerjen_idler: s.alerjen_idler ? s.alerjen_idler.split(',').map(Number) : []
-    }));
-    const toplam_kalori = yemekler.reduce((t, y) => t + Number(y.kalori), 0);
+    const anahtar = menuOnbellekAnahtari(yemekhaneId, tarih, ogunId);
+    const redis = await redisGetir();
 
-    return res.json({
-      menu: {
-        menu_id: ilk.menu_id,
-        tarih: ilk.tarih,
-        yemekhane: ilk.yemekhane,
-        ogun: ilk.ogun,
-        rezervasyon_son: ilk.rezervasyon_son,
-        ogrenci_fiyati: ilk.ogrenci_fiyati,
-        personel_fiyati: ilk.personel_fiyati
-      },
-      yemekler,
-      toplam_kalori
-    });
+    // 1. Önce Redis önbelleğine bak
+    const onbellek = await redis.get(anahtar);
+    if (onbellek) {
+      res.set('X-Cache', 'HIT');
+      return res.json(JSON.parse(onbellek));
+    }
+
+    // 2. Önbellekte yoksa replika veritabanından oku
+    const satirlar = await repo.gununMenusuGetir(yemekhaneId, tarih, ogunId);
+    let yanit;
+    if (satirlar.length === 0) {
+      yanit = { menu: null, yemekler: [], toplam_kalori: 0 };
+    } else {
+      const ilk = satirlar[0];
+      const yemekler = satirlar.map((s) => ({
+        yemek_id: s.yemek_id,
+        ad: s.yemek,
+        kategori: s.kategori,
+        kalori: s.kalori,
+        vejetaryen: Boolean(s.vejetaryen),
+        alerjenler: s.alerjenler ? s.alerjenler.split(', ') : [],
+        alerjen_idler: s.alerjen_idler ? s.alerjen_idler.split(',').map(Number) : []
+      }));
+      const toplam_kalori = yemekler.reduce((t, y) => t + Number(y.kalori), 0);
+
+      yanit = {
+        menu: {
+          menu_id: ilk.menu_id,
+          tarih: ilk.tarih,
+          yemekhane: ilk.yemekhane,
+          ogun: ilk.ogun,
+          rezervasyon_son: ilk.rezervasyon_son,
+          ogrenci_fiyati: ilk.ogrenci_fiyati,
+          personel_fiyati: ilk.personel_fiyati
+        },
+        yemekler,
+        toplam_kalori
+      };
+    }
+
+    // 3. Sonucu Redis'e yaz (TTL: 10 dk)
+    await redis.setEx(anahtar, MENU_ONBELLEK_SN, JSON.stringify(yanit));
+    res.set('X-Cache', 'MISS');
+    return res.json(yanit);
   } catch (err) {
     return hataYaniti(res, err);
   }
@@ -140,7 +165,6 @@ async function rezervasyonYap(req, res) {
   try {
     const { menu_id } = req.body;
     const sonuc = await repo.rezervasyonYap(req.kullanici.id, Number(menu_id));
-    // Rezervasyondan hemen sonra bakiye kaynaktan (primary) okunur
     const guncelKullanici = await repo.kullaniciBakiyeKaynaktan(req.kullanici.id);
     return res.json({
       mesaj: 'Rezervasyon oluşturuldu.',
@@ -251,7 +275,12 @@ async function yoneticiMenuKaydet(req, res) {
       personel_fiyati: Number(personel_fiyati),
       yemek_idler: yemek_idler.map(Number)
     });
-    return res.json({ mesaj: 'Menü kaydedildi.', menu_id: menuId });
+
+    // Önbelleği temizle (Cache Invalidation)
+    const redis = await redisGetir();
+    await redis.del(menuOnbellekAnahtari(Number(yemekhane_id), tarih, Number(ogun_id)));
+
+    return res.json({ mesaj: 'Menü kaydedildi ve önbellek güncellendi.', menu_id: menuId });
   } catch (err) {
     return hataYaniti(res, err);
   }
