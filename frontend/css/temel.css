@@ -7,116 +7,172 @@
    ===================================================================== */
 
 :root {
-  /* Renkler */
-  --zemin:       #EEF2F0;   /* porselen, sayfa zemini       */
-  --yuzey:       #FFFFFF;   /* içerik alanları              */
-  --metin:       #1F2A2E;   /* ana metin                    */
-  --metin-soluk: #5A686D;   /* ikincil metin, açıklamalar   */
-  --cizgi:       #C9D3D0;   /* kenarlıklar                  */
-  --ana:         #1B6B5A;   /* karo yeşili: ana eylem       */
-  --ana-koyu:    #12503F;
-  --vurgu:       #F2B134;   /* safran: fiyat, boş yer       */
-  --hata:        #B3261E;
-  --hata-zemin:  #FCE8E6;
-  --basari:      #2E6B30;
-  --basari-zemin:#E6F2E6;
-
-  /* Yazı */
-  --yazi: "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", sans-serif;
-  --boyut-kucuk: 0.875rem;
-  --boyut:       1rem;
-  --boyut-buyuk: 1.25rem;
-  --boyut-baslik: 1.75rem;
-
-  /* Boşluk ve köşe */
-  --bosluk: 1rem;
-  --kose: 6px;
+  --birincil: #1d4ed8;
+  --birincil-koyu: #1e40af;
+  --arka: #f1f5f9;
+  --kart: #ffffff;
+  --metin: #0f172a;
+  --soluk: #64748b;
+  --sinir: #cbd5e1;
+  --basari: #15803d;
+  --hata: #b91c1c;
+  --uyari: #b45309;
 }
 
-*, *::before, *::after { box-sizing: border-box; }
-
-html { -webkit-text-size-adjust: 100%; }
-
+* { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: var(--yazi);
-  font-size: var(--boyut);
-  line-height: 1.5;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--arka);
   color: var(--metin);
-  background: var(--zemin);
+  line-height: 1.45;
 }
 
-img, svg { max-width: 100%; height: auto; display: block; }
+.kap { max-width: 1020px; margin: 0 auto; padding: 0 12px; }
+.gizli { display: none !important; }
 
-h1, h2, h3 { line-height: 1.2; margin: 0 0 0.5em; }
-h1 { font-size: var(--boyut-baslik); }
-h2 { font-size: var(--boyut-buyuk); }
-p  { margin: 0 0 1em; max-width: 70ch; }
-
-a { color: var(--ana); }
-a:hover { color: var(--ana-koyu); }
-
-/* Sayfa genişliği: telefonda kenarlara 1rem pay, geniş ekranda ortalı */
-.kapsayici {
-  width: 100%;
-  max-width: 960px;
-  margin-inline: auto;
-  padding-inline: var(--bosluk);
-}
-
-/* ---------- Form öğeleri ---------- */
-label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
-
-input, select, textarea, button { font: inherit; }
-
-input, select, textarea {
-  width: 100%;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--cizgi);
-  border-radius: var(--kose);
-  background: var(--yuzey);
-  color: var(--metin);
-}
-
-/* Dokunmatik ekranda rahat basılabilir boyut: en az 44 px */
-.dugme {
-  display: inline-block;
-  min-height: 44px;
-  padding: 0.6rem 1.1rem;
-  border: 0;
-  border-radius: var(--kose);
-  background: var(--ana);
+.ust-cubuk {
+  background: var(--birincil);
   color: #fff;
-  font-weight: 600;
-  text-decoration: none;
+  padding: 12px 0 8px;
+  margin-bottom: 16px;
+}
+.ust-ic {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.marka { font-size: 1.15rem; font-weight: 700; }
+.kullanici-bilgi { font-size: 0.9rem; }
+
+.menu-cubugu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.menu-cubugu button {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: 0;
+  padding: 7px 12px;
+  border-radius: 6px;
   cursor: pointer;
+  font-size: 0.9rem;
 }
-.dugme:hover { background: var(--ana-koyu); color: #fff; }
+.menu-cubugu button.aktif,
+.menu-cubugu button:hover { background: #fff; color: var(--birincil); font-weight: 600; }
 
-/* Örn. rezervasyon son saati geçtiğinde */
-.dugme:disabled,
-.dugme[aria-disabled="true"] {
-  background: var(--cizgi);
-  color: var(--metin-soluk);
-  cursor: not-allowed;
+.panel {
+  background: var(--kart);
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  margin-bottom: 20px;
 }
+.panel h2 { margin-top: 0; font-size: 1.25rem; }
 
-:focus-visible { outline: 3px solid var(--vurgu); outline-offset: 2px; }
-
-/* ---------- Bildirim kutusu ----------
-   Stored procedure'lerden dönen Türkçe hata mesajları buraya yazılabilir:
-   <p class="bildirim bildirim-hata" role="alert">Bakiye yetersiz.</p>       */
 .bildirim {
-  padding: 0.75rem 1rem;
-  border-radius: var(--kose);
-  border-left: 4px solid currentColor;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  font-weight: 500;
 }
-.bildirim-hata   { color: var(--hata);   background: var(--hata-zemin); }
-.bildirim-basari { color: var(--basari); background: var(--basari-zemin); }
+.bildirim.basari { background: #dcfce7; color: var(--basari); border: 1px solid #86efac; }
+.bildirim.hata { background: #fee2e2; color: var(--hata); border: 1px solid #fca5a5; }
 
-/* Geniş tabloların sayfayı yana kaydırmaması için sarmalayıcı */
-.tablo-kaydir { overflow-x: auto; }
+.filtre-satir {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+input, select, textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--sinir);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+.form-kutu { display: flex; flex-direction: column; gap: 10px; max-width: 520px; }
+.form-kutu label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
 
-@media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+.btn-birincil {
+  background: var(--birincil);
+  color: #fff;
+  border: 0;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-birincil:hover { background: var(--birincil-koyu); }
+.btn-birincil:disabled { background: #94a3b8; cursor: not-allowed; }
+.btn-iptal { background: var(--hata); color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+
+.kart-izgara {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.kart {
+  border: 1px solid var(--sinir);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.etiket {
+  display: inline-block;
+  font-size: 0.78rem;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: #e2e8f0;
+  margin-right: 4px;
+}
+.etiket.veg { background: #dcfce7; color: var(--basari); }
+.etiket.alerjen { background: #fef3c7; color: var(--uyari); }
+.etiket.aktif { background: #dbeafe; color: var(--birincil); }
+.etiket.kullanildi { background: #dcfce7; color: var(--basari); }
+.etiket.iptal { background: #fee2e2; color: var(--hata); }
+
+.tablo-kap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { border-bottom: 1px solid var(--sinir); padding: 8px; text-align: left; }
+th { background: #f8fafc; }
+
+.bakiye-ozet {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+  background: #eff6ff;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+.yemek-secim-liste {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--sinir);
+  padding: 8px;
+  border-radius: 6px;
+}
+.yemek-secim-liste label { flex-direction: row; align-items: center; font-weight: 400; font-size: 0.85rem; }
+
+.deg-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* Telefon genişliği (400px ve altı) uyumu */
+@media (max-width: 480px) {
+  .filtre-satir > * { width: 100%; }
+  .menu-cubugu button { flex: 1 1 auto; text-align: center; font-size: 0.82rem; padding: 6px 8px; }
+  .panel { padding: 12px; }
 }
