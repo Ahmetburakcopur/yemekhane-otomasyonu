@@ -3,7 +3,6 @@ const router = express.Router();
 const ctrl = require('../controllers/yemekhaneController');
 const { oturumGetir } = require('../utils/oturum');
 
-// İsteğe bağlı oturum (menüleri giriş yapmadan da görebilmek için)
 async function opsiyonelOturum(req, res, next) {
   const token = req.cookies.oturum_token;
   if (token) {
@@ -12,7 +11,6 @@ async function opsiyonelOturum(req, res, next) {
   next();
 }
 
-// Zorunlu oturum
 async function oturumGerekli(req, res, next) {
   const token = req.cookies.oturum_token;
   const kullanici = await oturumGetir(token);
@@ -23,7 +21,6 @@ async function oturumGerekli(req, res, next) {
   next();
 }
 
-// Yönetici kontrolü
 function yoneticiGerekli(req, res, next) {
   if (req.kullanici.rol !== 'yonetici') {
     return res.status(403).json({ hata: 'Bu işlem için yönetici yetkisi gerekir.' });
@@ -37,6 +34,10 @@ router.get('/saglik', (req, res) => res.json({ durum: 'ok' }));
 router.post('/giris', ctrl.giris);
 router.post('/cikis', ctrl.cikis);
 router.get('/ben', oturumGerekli, ctrl.ben);
+
+// Profil alerjenleri (Aşama 4)
+router.get('/profil/alerjenler', oturumGerekli, ctrl.profilAlerjenleriGetir);
+router.put('/profil/alerjenler', oturumGerekli, ctrl.profilAlerjenleriKaydet);
 
 // Menüler
 router.get('/referanslar', ctrl.referanslar);

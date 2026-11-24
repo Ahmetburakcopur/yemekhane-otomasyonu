@@ -17,6 +17,7 @@
       <button data-sekme="haftalik">Haftalık &amp; Rezervasyon</button>
       <button data-sekme="rezervasyonlar" class="giris-gerekli gizli">Rezervasyonlarım</button>
       <button data-sekme="bakiye" class="giris-gerekli gizli">Bakiye</button>
+      <button data-sekme="profil" class="giris-gerekli gizli">Profil &amp; Alerjen</button>
       <button data-sekme="yonetici" class="yonetici-gerekli gizli">Yönetici</button>
       <button data-sekme="giris" id="btn-giris-sekme">Giriş Yap</button>
       <button id="btn-cikis" class="giris-gerekli gizli">Çıkış</button>
@@ -31,7 +32,7 @@
       <h2>Giriş Yap</h2>
       <form id="form-giris" class="form-kutu">
         <label>E-posta
-          <input type="email" id="giris-eposta" required placeholder="ornek@uni.edu.tr" />
+          <input type="email" id="giris-eposta" required placeholder="ornek@kampus.edu.tr" />
         </label>
         <label>Şifre
           <input type="password" id="giris-sifre" required placeholder="••••••••" />
@@ -81,6 +82,16 @@
       </div>
       <h3>Hareket Geçmişi</h3>
       <div id="bakiye-hareketler"></div>
+    </section>
+
+    <!-- 6. PROFİL VE ALERJEN SEÇİMİ (AŞAMA 4) -->
+    <section id="sekme-profil" class="panel gizli">
+      <h2>Profil &amp; Alerjen Tercihleri</h2>
+      <p>Aşağıdan alerjiniz olan maddeleri seçin. Günün menüsünde bu alerjenleri içeren yemekler kırmızı uyarıyla işaretlenir.</p>
+      <form id="form-alerjen" class="form-kutu">
+        <div id="profil-alerjenler" class="yemek-secim-liste"></div>
+        <button type="submit" class="btn-birincil">Alerjen Tercihlerimi Kaydet</button>
+      </form>
     </section>
 
     <!-- 7. YÖNETİCİ PANELİ -->

@@ -3,10 +3,18 @@ const repo = require('../repositories/yemekhaneRepo');
 const { oturumOlustur, oturumSil } = require('../utils/oturum');
 const { redisGetir } = require('../redisClient');
 
-const MENU_ONBELLEK_SN = 600; // 10 dakika
-
+// Ödev standardı: menu:{yemekhane_id}:{tarih}:{ogun_id}
 function menuOnbellekAnahtari(yemekhaneId, tarih, ogunId) {
-  return `menu:gunun:${yemekhaneId}:${tarih}:${ogunId}`;
+  return `menu:${yemekhaneId}:${tarih}:${ogunId}`;
+}
+
+// O günün sonuna (23:59:59) kadar kalan saniye
+function gunSonunaKalanSaniye() {
+  const simdi = new Date();
+  const gunSonu = new Date(simdi);
+  gunSonu.setHours(23, 59, 59, 999);
+  const kalan = Math.floor((gunSonu.getTime() - simdi.getTime()) / 1000);
+  return Math.max(kalan, 60);
 }
 
 function hataYaniti(res, err) {
@@ -68,14 +76,38 @@ async function ben(req, res) {
   }
 }
 
+// --- Profil Alerjenleri (Aşama 4) ---
+async function profilAlerjenleriGetir(req, res) {
+  try {
+    const [alerjenler, secili] = await Promise.all([
+      repo.alerjenleriGetir(),
+      repo.kullaniciAlerjenleriniGetir(req.kullanici.id)
+    ]);
+    return res.json({ alerjenler, secili });
+  } catch (err) {
+    return hataYaniti(res, err);
+  }
+}
+
+async function profilAlerjenleriKaydet(req, res) {
+  try {
+    const idler = Array.isArray(req.body.alerjen_idler) ? req.body.alerjen_idler.map(Number) : [];
+    await repo.kullaniciAlerjenleriniKaydet(req.kullanici.id, idler);
+    return res.json({ mesaj: 'Alerjen tercihleriniz kaydedildi.', secili: idler });
+  } catch (err) {
+    return hataYaniti(res, err);
+  }
+}
+
 // --- Referans & Menüler ---
 async function referanslar(req, res) {
   try {
-    const [yemekhaneler, ogunler] = await Promise.all([
+    const [yemekhaneler, ogunler, alerjenler] = await Promise.all([
       repo.yemekhaneleriGetir(),
-      repo.ogunleriGetir()
+      repo.ogunleriGetir(),
+      repo.alerjenleriGetir()
     ]);
-    return res.json({ yemekhaneler, ogunler });
+    return res.json({ yemekhaneler, ogunler, alerjenler });
   } catch (err) {
     return hataYaniti(res, err);
   }
@@ -90,50 +122,55 @@ async function gununMenusu(req, res) {
     const anahtar = menuOnbellekAnahtari(yemekhaneId, tarih, ogunId);
     const redis = await redisGetir();
 
-    // 1. Önce Redis önbelleğine bak
+    let yanit;
     const onbellek = await redis.get(anahtar);
     if (onbellek) {
+      console.log(`[CACHE HIT] ${anahtar} -> Redis'ten getirildi`);
       res.set('X-Cache', 'HIT');
-      return res.json(JSON.parse(onbellek));
-    }
-
-    // 2. Önbellekte yoksa replika veritabanından oku
-    const satirlar = await repo.gununMenusuGetir(yemekhaneId, tarih, ogunId);
-    let yanit;
-    if (satirlar.length === 0) {
-      yanit = { menu: null, yemekler: [], toplam_kalori: 0 };
+      yanit = JSON.parse(onbellek);
     } else {
-      const ilk = satirlar[0];
-      const yemekler = satirlar.map((s) => ({
-        yemek_id: s.yemek_id,
-        ad: s.yemek,
-        kategori: s.kategori,
-        kalori: s.kalori,
-        vejetaryen: Boolean(s.vejetaryen),
-        alerjenler: s.alerjenler ? s.alerjenler.split(', ') : [],
-        alerjen_idler: s.alerjen_idler ? s.alerjen_idler.split(',').map(Number) : []
-      }));
-      const toplam_kalori = yemekler.reduce((t, y) => t + Number(y.kalori), 0);
+      console.log(`[CACHE MISS] ${anahtar} -> Veritabanından (replika) okundu`);
+      const satirlar = await repo.gununMenusuGetir(yemekhaneId, tarih, ogunId);
+      if (satirlar.length === 0) {
+        yanit = { menu: null, yemekler: [], toplam_kalori: 0 };
+      } else {
+        const ilk = satirlar[0];
+        const yemekler = satirlar.map((s) => ({
+          yemek_id: s.yemek_id,
+          ad: s.yemek,
+          kategori: s.kategori,
+          kalori: s.kalori,
+          vejetaryen: Boolean(s.vejetaryen),
+          alerjenler: s.alerjenler ? s.alerjenler.split(', ') : [],
+          alerjen_idler: s.alerjen_idler ? s.alerjen_idler.split(',').map(Number) : []
+        }));
+        const toplam_kalori = yemekler.reduce((t, y) => t + Number(y.kalori), 0);
 
-      yanit = {
-        menu: {
-          menu_id: ilk.menu_id,
-          tarih: ilk.tarih,
-          yemekhane: ilk.yemekhane,
-          ogun: ilk.ogun,
-          rezervasyon_son: ilk.rezervasyon_son,
-          ogrenci_fiyati: ilk.ogrenci_fiyati,
-          personel_fiyati: ilk.personel_fiyati
-        },
-        yemekler,
-        toplam_kalori
-      };
+        yanit = {
+          menu: {
+            menu_id: ilk.menu_id,
+            tarih: ilk.tarih,
+            yemekhane: ilk.yemekhane,
+            ogun: ilk.ogun,
+            rezervasyon_son: ilk.rezervasyon_son,
+            ogrenci_fiyati: ilk.ogrenci_fiyati,
+            personel_fiyati: ilk.personel_fiyati
+          },
+          yemekler,
+          toplam_kalori
+        };
+      }
+      await redis.setEx(anahtar, gunSonunaKalanSaniye(), JSON.stringify(yanit));
+      res.set('X-Cache', 'MISS');
     }
 
-    // 3. Sonucu Redis'e yaz (TTL: 10 dk)
-    await redis.setEx(anahtar, MENU_ONBELLEK_SN, JSON.stringify(yanit));
-    res.set('X-Cache', 'MISS');
-    return res.json(yanit);
+    // Giriş yapmış kullanıcının alerjenlerini menüye ekle (önbelleği kişiye özel kirletmeden)
+    let kullanici_alerjenleri = [];
+    if (req.kullanici) {
+      kullanici_alerjenleri = await repo.kullaniciAlerjenleriniGetir(req.kullanici.id);
+    }
+
+    return res.json({ ...yanit, kullanici_alerjenleri });
   } catch (err) {
     return hataYaniti(res, err);
   }
@@ -163,13 +200,15 @@ async function haftalikMenuler(req, res) {
 // --- Rezervasyonlar ---
 async function rezervasyonYap(req, res) {
   try {
-    const { menu_id } = req.body;
-    const sonuc = await repo.rezervasyonYap(req.kullanici.id, Number(menu_id));
+    const { menu_id, porsiyon } = req.body;
+    const secilenPorsiyon = porsiyon === 'yarim' ? 'yarim' : 'tam';
+    const sonuc = await repo.rezervasyonYap(req.kullanici.id, Number(menu_id), secilenPorsiyon);
     const guncelKullanici = await repo.kullaniciBakiyeKaynaktan(req.kullanici.id);
     return res.json({
-      mesaj: 'Rezervasyon oluşturuldu.',
+      mesaj: `Rezervasyon oluşturuldu (${sonuc.porsiyon === 'yarim' ? 'Yarım Porsiyon' : 'Tam Porsiyon'}).`,
       rezervasyon_id: sonuc.rezervasyon_id,
       ucret: sonuc.ucret,
+      porsiyon: sonuc.porsiyon,
       bakiye: guncelKullanici.bakiye
     });
   } catch (err) {
@@ -276,9 +315,10 @@ async function yoneticiMenuKaydet(req, res) {
       yemek_idler: yemek_idler.map(Number)
     });
 
-    // Önbelleği temizle (Cache Invalidation)
     const redis = await redisGetir();
-    await redis.del(menuOnbellekAnahtari(Number(yemekhane_id), tarih, Number(ogun_id)));
+    const anahtar = menuOnbellekAnahtari(Number(yemekhane_id), tarih, Number(ogun_id));
+    await redis.del(anahtar);
+    console.log(`[CACHE INVALIDATE] ${anahtar} silindi`);
 
     return res.json({ mesaj: 'Menü kaydedildi ve önbellek güncellendi.', menu_id: menuId });
   } catch (err) {
@@ -290,6 +330,8 @@ module.exports = {
   giris,
   cikis,
   ben,
+  profilAlerjenleriGetir,
+  profilAlerjenleriKaydet,
   referanslar,
   gununMenusu,
   haftalikMenuler,

@@ -1,5 +1,5 @@
 let aktifKullanici = null;
-let referans = { yemekhaneler: [], ogunler: [] };
+let referans = { yemekhaneler: [], ogunler: [], alerjenler: [] };
 
 const bugunStr = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
 
@@ -31,6 +31,7 @@ function sekmeAc(ad) {
   if (ad === 'haftalik') haftalikMenulerYukle();
   if (ad === 'rezervasyonlar') rezervasyonlarimYukle();
   if (ad === 'bakiye') bakiyeYukleEkran();
+  if (ad === 'profil') profilYukle();
   if (ad === 'yonetici') yoneticiYukle();
 }
 
@@ -64,17 +65,21 @@ async function gununMenusuYukle() {
       kap.innerHTML = '<p>Seçilen kriterlere uygun menü bulunamadı.</p>';
       return;
     }
+    const kulAlerjen = new Set(veri.kullanici_alerjenleri || []);
     kap.innerHTML = `
       <p><strong>${veri.menu.yemekhane}</strong> · ${veri.menu.tarih} · ${veri.menu.ogun}
       <br/>Öğrenci: <strong>${veri.menu.ogrenci_fiyati} TL</strong> · Personel: <strong>${veri.menu.personel_fiyati} TL</strong> · Toplam Kalori: <strong>${veri.toplam_kalori} kcal</strong></p>
       <div class="kart-izgara">
-        ${veri.yemekler.map(y => `
-          <div class="kart">
-            <div><strong>${y.ad}</strong> <span class="etiket">${y.kategori}</span></div>
-            <div>${y.kalori} kcal ${y.vejetaryen ? '<span class="etiket veg">Vejetaryen</span>' : ''}</div>
-            <div>${y.alerjenler.length ? y.alerjenler.map(a => `<span class="etiket alerjen">${a}</span>`).join('') : '<small>Alerjen yok</small>'}</div>
-          </div>
-        `).join('')}
+        ${veri.yemekler.map(y => {
+          const uyariVar = (y.alerjen_idler || []).some(id => kulAlerjen.has(id));
+          return `
+            <div class="kart ${uyariVar ? 'alerjen-uyari' : ''}">
+              <div><strong>${y.ad}</strong> <span class="etiket">${y.kategori}</span></div>
+              <div>${y.kalori} kcal ${y.vejetaryen ? '<span class="etiket veg">Vejetaryen</span>' : ''}</div>
+              <div>${y.alerjenler.length ? y.alerjenler.map(a => `<span class="etiket alerjen">${a}</span>`).join('') : '<small>Alerjen yok</small>'}</div>
+              ${uyariVar ? '<div><span class="uyari-etiket">⚠ Alerjen Uyarısı!</span></div>' : ''}
+            </div>`;
+        }).join('')}
       </div>`;
   } catch (e) {
     bildirimGoster(e.message, 'hata');
@@ -93,13 +98,16 @@ async function haftalikMenulerYukle() {
     }
     const simdi = new Date();
     kap.innerHTML = veri.menuler.map(m => {
-      const fiyat = aktifKullanici && aktifKullanici.rol === 'ogrenci' ? m.ogrenci_fiyati : m.personel_fiyati;
+      const tamFiyat = Number(aktifKullanici && aktifKullanici.rol === 'ogrenci' ? m.ogrenci_fiyati : m.personel_fiyati);
+      const yarimFiyat = (tamFiyat * 0.6).toFixed(2);
+      const kahvaltiMi = m.ogun === 'Kahvaltı';
       const sureDoldu = simdi >= new Date(m.rezervasyon_son.replace(' ', 'T'));
       const zatenAktif = m.kullanici_rez_durum === 'aktif' || m.kullanici_rez_durum === 'kullanildi';
       const pasif = !aktifKullanici || sureDoldu || m.bos_yer <= 0 || zatenAktif;
+
       let btnMetin = 'Rezervasyon Yap';
       if (!aktifKullanici) btnMetin = 'Giriş Gerekli';
-      else if (zatenAktif) btnMetin = `Durum: ${m.kullanici_rez_durum}`;
+      else if (zatenAktif) btnMetin = `Durum: ${m.kullanici_rez_durum} (${m.kullanici_rez_porsiyon || 'tam'})`;
       else if (sureDoldu) btnMetin = 'Süre Doldu';
       else if (m.bos_yer <= 0) btnMetin = 'Kapasite Dolu';
 
@@ -107,8 +115,13 @@ async function haftalikMenulerYukle() {
         <div class="kart">
           <div><strong>${m.tarih}</strong> · ${m.ogun}</div>
           <div>Boş Yer: <strong>${m.bos_yer}</strong> / ${m.kapasite}</div>
-          <div>Fiyat: <strong>${fiyat} TL</strong> ${m.ortalama_puan ? `· ★ ${m.ortalama_puan}` : ''}</div>
+          <div>Tam: <strong>${tamFiyat.toFixed(2)} TL</strong> ${!kahvaltiMi ? `· Yarım: <strong>${yarimFiyat} TL</strong>` : ''} ${m.ortalama_puan ? `· ★ ${m.ortalama_puan}` : ''}</div>
           <small>Son Saat: ${m.rezervasyon_son}</small>
+          ${!pasif && !kahvaltiMi ? `
+            <div class="porsiyon-secim">
+              <label><input type="radio" name="por-${m.menu_id}" value="tam" checked /> Tam</label>
+              <label><input type="radio" name="por-${m.menu_id}" value="yarim" /> Yarım (%60)</label>
+            </div>` : ''}
           <button class="btn-birincil" ${pasif ? 'disabled' : ''} onclick="rezervasyonYap(${m.menu_id})">${btnMetin}</button>
         </div>`;
     }).join('');
@@ -118,8 +131,13 @@ async function haftalikMenulerYukle() {
 }
 
 window.rezervasyonYap = async function(menuId) {
+  const seciliRadio = document.querySelector(`input[name="por-${menuId}"]:checked`);
+  const porsiyon = seciliRadio ? seciliRadio.value : 'tam';
   try {
-    const res = await api('/rezervasyonlar', { method: 'POST', body: JSON.stringify({ menu_id: menuId }) });
+    const res = await api('/rezervasyonlar', {
+      method: 'POST',
+      body: JSON.stringify({ menu_id: menuId, porsiyon })
+    });
     aktifKullanici.bakiye = res.bakiye;
     kullaniciArayuzuGuncelle();
     bildirimGoster(`${res.mesaj} Güncel bakiye: ${Number(res.bakiye).toFixed(2)} TL`);
@@ -144,7 +162,7 @@ async function rezervasyonlarimYukle() {
       return `
         <div class="kart">
           <div><strong>${r.tarih}</strong> · ${r.yemekhane} (${r.ogun})</div>
-          <div>Ücret: ${r.ucret} TL <span class="etiket ${r.durum}">${r.durum}</span></div>
+          <div>Ücret: ${r.ucret} TL · Porsiyon: <strong>${r.porsiyon === 'yarim' ? 'Yarım' : 'Tam'}</strong> <span class="etiket ${r.durum}">${r.durum}</span></div>
           ${iptalEdilebilir ? `<button class="btn-iptal" onclick="rezervasyonIptal(${r.id})">İptal Et</button>` : ''}
           ${degerlendirilebilir ? `
             <div class="deg-form">
@@ -204,6 +222,18 @@ async function bakiyeYukleEkran() {
           </tbody>
         </table>
       </div>`;
+  } catch (e) {
+    bildirimGoster(e.message, 'hata');
+  }
+}
+
+async function profilYukle() {
+  try {
+    const veri = await api('/profil/alerjenler');
+    const seciliSet = new Set(veri.secili);
+    document.getElementById('profil-alerjenler').innerHTML = veri.alerjenler.map(a => `
+      <label><input type="checkbox" name="kul_alerjen" value="${a.id}" ${seciliSet.has(a.id) ? 'checked' : ''} /> ${a.ad}</label>
+    `).join('');
   } catch (e) {
     bildirimGoster(e.message, 'hata');
   }
@@ -295,6 +325,20 @@ async function baslat() {
       document.getElementById('yukleme-tutar').value = '';
       bildirimGoster(res.mesaj);
       bakiyeYukleEkran();
+    } catch (err) {
+      bildirimGoster(err.message, 'hata');
+    }
+  });
+
+  document.getElementById('form-alerjen').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const alerjen_idler = Array.from(document.querySelectorAll('input[name="kul_alerjen"]:checked')).map(c => Number(c.value));
+    try {
+      const res = await api('/profil/alerjenler', {
+        method: 'PUT',
+        body: JSON.stringify({ alerjen_idler })
+      });
+      bildirimGoster(res.mesaj);
     } catch (err) {
       bildirimGoster(err.message, 'hata');
     }

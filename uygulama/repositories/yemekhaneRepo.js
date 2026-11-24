@@ -9,7 +9,6 @@ async function kullaniciBulEposta(eposta) {
   return rows[0] || null;
 }
 
-// Rezervasyon/iptal/yükleme sonrası replikasyon gecikmesine takılmamak için kaynaktan (primary) okunur
 async function kullaniciBakiyeKaynaktan(kullaniciId) {
   const [rows] = await dbYazma.query(
     'SELECT id, ad, soyad, eposta, rol, ogrenci_no, bakiye FROM kullanicilar WHERE id = ?',
@@ -29,6 +28,11 @@ async function ogunleriGetir() {
   return rows;
 }
 
+async function alerjenleriGetir() {
+  const [rows] = await dbOkuma.query('SELECT id, ad FROM alerjenler ORDER BY ad');
+  return rows;
+}
+
 async function yemekleriGetir() {
   const [rows] = await dbOkuma.query(
     `SELECT y.id, y.ad, y.kalori, y.vejetaryen, k.ad AS kategori, k.sira AS kategori_sira
@@ -37,6 +41,35 @@ async function yemekleriGetir() {
       ORDER BY k.sira, y.ad`
   );
   return rows;
+}
+
+// --- Kullanıcı Alerjenleri (Aşama 4) ---
+async function kullaniciAlerjenleriniGetir(kullaniciId) {
+  const [rows] = await dbYazma.query(
+    'SELECT alerjen_id FROM kullanici_alerjenleri WHERE kullanici_id = ?',
+    [kullaniciId]
+  );
+  return rows.map((r) => r.alerjen_id);
+}
+
+async function kullaniciAlerjenleriniKaydet(kullaniciId, alerjenIdler) {
+  const conn = await dbYazma.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('DELETE FROM kullanici_alerjenleri WHERE kullanici_id = ?', [kullaniciId]);
+    for (const alerjenId of alerjenIdler) {
+      await conn.query(
+        'INSERT INTO kullanici_alerjenleri (kullanici_id, alerjen_id) VALUES (?, ?)',
+        [kullaniciId, alerjenId]
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 // --- Menüler (Replika) ---
@@ -56,7 +89,7 @@ async function haftalikMenuleriGetir(yemekhaneId, baslangicTarih, bitisTarih, ku
             d.kapasite, d.rezerve, d.bos_yer, d.doluluk_yuzde, d.rezervasyon_son,
             m.ogrenci_fiyati, m.personel_fiyati,
             COALESCE(p.oy_sayisi, 0) AS oy_sayisi, p.ortalama_puan,
-            r.id AS kullanici_rez_id, r.durum AS kullanici_rez_durum
+            r.id AS kullanici_rez_id, r.durum AS kullanici_rez_durum, r.porsiyon AS kullanici_rez_porsiyon
        FROM v_menu_doluluk d
        JOIN menuler m ON m.id = d.menu_id
        LEFT JOIN v_menu_puan p ON p.menu_id = d.menu_id
@@ -68,9 +101,9 @@ async function haftalikMenuleriGetir(yemekhaneId, baslangicTarih, bitisTarih, ku
   return menuler;
 }
 
-// --- Rezervasyonlar & Bakiye (Stored Procedure -> Kaynak, Listeleme -> Replika) ---
-async function rezervasyonYap(kullaniciId, menuId) {
-  const [rows] = await dbYazma.query('CALL sp_rezervasyon_yap(?, ?)', [kullaniciId, menuId]);
+// --- Rezervasyonlar & Bakiye ---
+async function rezervasyonYap(kullaniciId, menuId, porsiyon = 'tam') {
+  const [rows] = await dbYazma.query('CALL sp_rezervasyon_yap(?, ?, ?)', [kullaniciId, menuId, porsiyon]);
   return rows[0][0];
 }
 
@@ -81,7 +114,7 @@ async function rezervasyonIptal(kullaniciId, rezervasyonId) {
 
 async function rezervasyonlarimiGetir(kullaniciId) {
   const [rows] = await dbOkuma.query(
-    `SELECT r.id, r.menu_id, r.durum, r.ucret, r.olusturma, r.kullanma_zamani, r.iptal_zamani,
+    `SELECT r.id, r.menu_id, r.durum, r.porsiyon, r.ucret, r.olusturma, r.kullanma_zamani, r.iptal_zamani,
             m.tarih, yh.ad AS yemekhane, o.ad AS ogun,
             TIMESTAMP(m.tarih, o.son_saat) AS rezervasyon_son,
             d.puan AS kullanici_puani, d.yorum AS kullanici_yorumu
@@ -191,7 +224,10 @@ module.exports = {
   kullaniciBakiyeKaynaktan,
   yemekhaneleriGetir,
   ogunleriGetir,
+  alerjenleriGetir,
   yemekleriGetir,
+  kullaniciAlerjenleriniGetir,
+  kullaniciAlerjenleriniKaydet,
   gununMenusuGetir,
   haftalikMenuleriGetir,
   rezervasyonYap,
